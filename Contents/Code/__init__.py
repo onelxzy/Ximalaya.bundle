@@ -1,6 +1,4 @@
 # coding=utf-8
-# Rewrite for new Ximalaya APIs by Gemini
-# Based on provided Search_API.md and Album_information_and_audio_download_address.md
 
 import time
 import os
@@ -9,22 +7,14 @@ import os, string, hashlib, base64, re, plistlib, unicodedata
 from collections import defaultdict
 from io import open
 
-# Netease APIs (Keep existing logic)
-ARTIST_URL_WANGYI = 'http://music.163.com/api/v1/artist/'
-LYRIC_URL_WANGYI = 'https://music.163.com/api/song/lyric?id='
-
-# Ximalaya New APIs
-# 搜索接口 (Updated based on Search_API.md)
+# Ximalaya APIs
 XIMALAYA_SEARCH_BASE = 'https://www.ximalaya.com/revision/search'
-# 专辑音轨接口 (Updated based on Album_information_and_audio_download_address.md)
 XIMALAYA_TRACK_URL = 'http://mobwsa.ximalaya.com/mobile/playlist/album/page?albumId='
-
-# Legacy APIs (Retained but with updated Headers, might need future replacement)
 XIMALAYA_ARTIST_ALBUM = 'https://www.ximalaya.com/revision/user/pub?uid='
 XIMALAYA_ARTIST_URL = 'https://www.ximalaya.com/revision/user/basic?uid='
 XIMALAYA_ALBUM_INFO = 'https://www.ximalaya.com/revision/album/v1/simple?albumId='
 
-# Tunables (Keep existing tunables)
+# Tunables
 ARTIST_MATCH_LIMIT = 9
 ARTIST_MATCH_MIN_SCORE = 85
 ARTIST_MANUAL_MATCH_LIMIT = 120
@@ -54,7 +44,6 @@ ALBUM_NUM_TRACKS_BONUS = 1
 
 RE_STRIP_PARENS = Regex('\([^)]*\)')
 
-# Updated Headers: Removed 'origin' and 'referer' pointing to qq.com to avoid risk control
 headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*'
@@ -170,7 +159,7 @@ class Ximalaya(Agent.Artist):
       try:
         # Field mapping for search results
         name = album.get('title', '')
-        # Some search results use 'id', some 'albumId'. Revision search uses 'id'.
+        # Some search results use 'id', some 'albumId'.
         id = str(album.get('id', album.get('albumId', '')))
         
         # Search API returns 'nickname' for artist name
@@ -208,7 +197,7 @@ class Ximalaya(Agent.Artist):
     for i, t in enumerate(media.children[0].children):
       media_track = t.title.lower()
       for j, track in enumerate(tracks):
-        # New API track title key is 'title'
+        # API track title key is 'title'
         track_title = track.get('title', '').lower()
         if Util.LevenshteinDistance(track_title, media_track) < 5:
           bonus += ALBUM_TRACK_BONUS_INCREMENT
@@ -236,9 +225,9 @@ class Ximalaya(Agent.Artist):
       results.Append(MetadataSearchResult(id = 'Various%20Artists', name= 'Various Artists', thumb = VARIOUS_ARTISTS_POSTER, lang  = lang, score = 100))
       return
 
-    Log('开始搜索: ' + media.artist)
+    Log('Search Artist: ' + media.artist)
     artist_results = []
-    # Try searching for artist using new Search API with core=user (assumed supported)
+    # Search for artist
     artists = SearchArtists(media.artist, ARTIST_MATCH_LIMIT)
     
     if artists:
@@ -272,7 +261,6 @@ class Ximalaya(Agent.Artist):
       if artist.get('nickName') == 'Various Artists':
           pass
       else:       
-          # New API usually provides full URL, but check if protocol needed
           cover = artist.get('cover', '')
           if cover and not cover.startswith('http'):
               cover = 'https:' + cover
@@ -482,7 +470,7 @@ class XimalayaAgent(Agent.Album):
       
       metadata.studio = '喜马拉雅'
     except:
-      Log("获取简介失败")
+      Log("Error parsing summary")
 
     metadata.genres.clear()
     try:
@@ -523,12 +511,12 @@ def SearchArtists(artist, limit=10):
   except:
     a = artist.lower()
   
-  # Updated to new Revision Search API, assuming core=user works
+  # Search API
   url = XIMALAYA_SEARCH_BASE + '?core=user&kw=' + String.Quote(a) + '&page=1&rows=' + str(limit)
   
   try: 
     response = GetJSON(url)
-    # New Structure: data.result.response.docs
+    # Parse results
     if 'data' in response and 'result' in response['data']:
         docs = response['data']['result']['response']['docs']
         artists = Listify(docs)
@@ -550,7 +538,7 @@ def SearchAlbums(album, limit=10, legacy=False):
   except:
     a = album.lower()
   
-  # Updated to new Revision Search API
+  # Search API
   url = XIMALAYA_SEARCH_BASE + '?core=album&kw=' + String.Quote(a) + '&page=1&rows=' + str(limit)
   
   try:
@@ -559,14 +547,14 @@ def SearchAlbums(album, limit=10, legacy=False):
         docs = response['data']['result']['response']['docs']
         albums = Listify(docs)
     elif response.has_key('error'):
-      Log('搜索结果错误: ' + response['message'])
+      Log('Search error: ' + response['message'])
   except:
     Log('Error retrieving album search results.')
 
   return albums
 
 def GetAlbumsByArtist(artist_id, limit=ARTIST_ALBUMS_LIMIT*4, albums=[], legacy=True):
-  # Legacy API usage, might need check
+  # Legacy API usage
   url = XIMALAYA_ARTIST_ALBUM + artist_id
   response = GetJSON(url)
   try:
@@ -596,14 +584,12 @@ def GetAlbum(album_id, lang='en'):
     return {}
 
 def GetTracks(artist_id, album_id, lang='en'):
-  # Updated to new Mobile API: mobwsa.ximalaya.com
+  # Mobile API
   # Note: API requires pageId, assumes page 1.
   url = XIMALAYA_TRACK_URL + album_id + '&pageId=1'
   try:
     tracks_result = GetJSON(url)
-    # New structure has 'totalCount' and 'list' at root level
-    # or sometimes inside 'data' depending on API version, but MD says root.
-    # We check both to be safe.
+    # Parse total count and list
     total = 0
     track_list = []
     
